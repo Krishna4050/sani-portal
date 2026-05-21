@@ -53,9 +53,47 @@ export default function DashboardPage() {
     fetchData();
   }, []);
 
-  // ==========================================
+  
+  // IDLE AUTO-LOGOUT (5 MINUTES)
+  
+  useEffect(() => {
+    // 5 minutes = 300,000 milliseconds
+    const INACTIVITY_TIME = 5 * 60 * 1000; 
+    let timeoutId: number;
+
+    const logoutUser = async () => {
+      console.log("User idle for 5 minutes. Executing secure auto-logout...");
+      await supabase.auth.signOut();
+      router.push('/login');
+      router.refresh();
+    };
+
+    const resetTimer = () => {
+      // Clear the old timer
+      if (timeoutId) window.clearTimeout(timeoutId);
+      // Start a fresh 5-minute timer
+      timeoutId = window.setTimeout(logoutUser, INACTIVITY_TIME);
+    };
+
+    // Events that prove the user is still at their computer
+    const events = ['mousemove', 'keydown', 'scroll', 'click', 'touchstart'];
+
+    // Attach the listeners to the browser window
+    events.forEach((event) => window.addEventListener(event, resetTimer));
+
+    // Start the timer the moment the dashboard loads
+    resetTimer();
+
+    // Clean up the listeners if the user leaves the page manually
+    return () => {
+      if (timeoutId) window.clearTimeout(timeoutId);
+      events.forEach((event) => window.removeEventListener(event, resetTimer));
+    };
+  }, [router, supabase.auth]);
+
+  
   // SECURE LOGOUT FUNCTION
-  // ==========================================
+ 
   const handleSignOut = async () => {
     await supabase.auth.signOut(); // Destroys the secure cookie
     router.push('/login');
