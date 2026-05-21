@@ -88,7 +88,7 @@ export default function LoginPage() {
       setIsLoading(false);
     } else {
       // Success! Send them to the locked admin dashboard
-      router.push('/admin/settings');
+      router.push('/');
       router.refresh(); 
     }
   };
