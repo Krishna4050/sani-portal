@@ -1,176 +1,187 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Settings, MessageSquare, PhoneCall, ShieldAlert, Loader2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { createBrowserClient } from '@supabase/ssr';
+import { ShieldCheck, LogOut, Users, QrCode, MessageSquare, PhoneCall, Loader2 } from 'lucide-react';
 
-export default function AdminSettingsPage() {
-  const [settings, setSettings] = useState({
-    twilio_sms_enabled: false,
-    twilio_call_enabled: false,
-  });
+export default function DashboardPage() {
+  const router = useRouter();
+  const [settings, setSettings] = useState({ twilio_sms_enabled: false, twilio_call_enabled: false });
+  const [stats, setStats] = useState({ totalUsers: 0, totalTags: 0 });
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState<string | null>(null);
 
-  
+  // Initialize Supabase to handle the secure logout
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
-  // Fetch current settings from Go Backend on load
   useEffect(() => {
-    // DEFINE the function INSIDE the useEffect
-    const fetchSettings = async () => {
+    const fetchData = async () => {
       try {
         const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
-        const response = await fetch(`${backendUrl}/api/admin/settings`);
-        if (response.ok) {
-          const data = await response.json();
+        
+        // Fetch Settings & Stats at the same time
+        const [settingsRes, statsRes] = await Promise.all([
+          fetch(`${backendUrl}/api/admin/settings`),
+          fetch(`${backendUrl}/api/admin/stats`)
+        ]);
+
+        if (settingsRes.ok) {
+          const settingsData = await settingsRes.json();
           setSettings({
-            twilio_sms_enabled: data.twilio_sms_enabled || false,
-            twilio_call_enabled: data.twilio_call_enabled || false,
+            twilio_sms_enabled: settingsData.twilio_sms_enabled || false,
+            twilio_call_enabled: settingsData.twilio_call_enabled || false,
+          });
+        }
+
+        if (statsRes.ok) {
+          const statsData = await statsRes.json();
+          setStats({
+            totalUsers: statsData.totalUsers || 0,
+            totalTags: statsData.totalTags || 0,
           });
         }
       } catch (error) {
-        console.error("Failed to load settings:", error);
+        console.error("Failed to load dashboard data:", error);
       } finally {
         setIsLoading(false);
       }
     };
 
-    // CALL the function immediately
-    fetchSettings();
-  }, []); // 
-  // SECURITY: Automatically log out if the browser or tab is closed
-  useEffect(() => {
-    const handleUnload = () => {
-      // Force Supabase to clear the session securely
-      const backendUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      if (backendUrl) {
-        // We use synchronous navigator.sendBeacon or localStorage clearing
-        // so it fires reliably before the tab dies
-        localStorage.clear();
-        sessionStorage.clear();
-      }
-    };
-
-    window.addEventListener('beforeunload', handleUnload);
-    
-    return () => {
-      window.removeEventListener('beforeunload', handleUnload);
-    };
+    fetchData();
   }, []);
 
-  // Flip the switch and tell the Go Backend
-  const toggleSetting = async (key: string, currentValue: boolean) => {
-    setIsSaving(key);
-    const newValue = !currentValue;
-
-    try {
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
-      const response = await fetch(`${backendUrl}/api/admin/update-setting`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          settingKey: key,
-          settingValue: newValue,
-        }),
-      });
-
-      if (response.ok) {
-        // Update the UI instantly if successful
-        setSettings(prev => ({ ...prev, [key]: newValue }));
-      } else {
-        alert("Failed to update setting. Please try again.");
-      }
-    } catch (error) {
-      console.error("Error updating setting:", error);
-      alert("Network error.");
-    } finally {
-      setIsSaving(null);
-    }
+  // ==========================================
+  // SECURE LOGOUT FUNCTION
+  // ==========================================
+  const handleSignOut = async () => {
+    await supabase.auth.signOut(); // Destroys the secure cookie
+    router.push('/login');
+    router.refresh(); // Forces the Bouncer to re-check the locks
   };
 
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <Loader2 className="animate-spin text-blue-600" size={48} />
+        <Loader2 className="animate-spin text-slate-800" size={40} />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4 font-sans text-slate-800">
-      <div className="max-w-3xl mx-auto space-y-8">
+    <div className="min-h-screen bg-gray-50 font-sans pb-12">
+      
+      {/* TOP NAVIGATION BAR */}
+      <nav className="bg-white border-b border-gray-200 px-8 py-4 flex justify-between items-center sticky top-0 z-10 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="bg-slate-800 p-2 rounded-lg">
+            <ShieldCheck className="text-green-400" size={24} />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-slate-800 tracking-tight">System Control Panel</h1>
+            <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Stealth Operations</p>
+          </div>
+        </div>
         
-        <div>
-          <h1 className="text-3xl font-extrabold flex items-center gap-3 tracking-tight">
-            <Settings className="text-blue-600" size={32} />
-            System Control Panel
-          </h1>
-          <p className="text-gray-500 mt-2">Manage global killswitches and third-party integrations.</p>
-        </div>
+        <button 
+          onClick={handleSignOut}
+          className="flex items-center gap-2 px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg font-semibold text-sm transition-colors border border-red-100"
+        >
+          <LogOut size={16} />
+          Secure Sign Out
+        </button>
+      </nav>
 
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="bg-slate-800 p-4 border-b border-gray-200 flex items-center gap-2">
-            <ShieldAlert className="text-yellow-400" size={20} />
-            <h2 className="text-white font-semibold">Twilio Proxy Architecture</h2>
-          </div>
-
-          <div className="p-6 space-y-6">
+      <div className="max-w-5xl mx-auto mt-8 px-6 space-y-8">
+        
+        {/* HERO ANALYTICS SECTION */}
+        <section>
+          <h2 className="text-lg font-bold text-slate-800 mb-4">Live Analytics</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             
-            {/* SMS TOGGLE */}
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
-              <div className="flex items-start gap-4">
-                <div className={`p-3 rounded-lg ${settings.twilio_sms_enabled ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-500'}`}>
-                  <MessageSquare size={24} />
-                </div>
-                <div>
-                  <h3 className="font-bold text-lg">SMS OTP Verification</h3>
-                  <p className="text-sm text-gray-500 max-w-md">
-                    When active, the system sends real texts via Twilio. When paused, texts are intercepted and printed to the server terminal to save credits (Mock Mode).
-                  </p>
-                </div>
+            {/* Total Users Card */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+              <div className="bg-blue-50 p-4 rounded-xl">
+                <Users className="text-blue-600" size={28} />
               </div>
-
-              <button
-                onClick={() => toggleSetting('twilio_sms_enabled', settings.twilio_sms_enabled)}
-                disabled={isSaving === 'twilio_sms_enabled'}
-                className={`w-14 h-8 flex items-center rounded-full p-1 transition-colors duration-300 focus:outline-none ${
-                  settings.twilio_sms_enabled ? 'bg-green-500' : 'bg-gray-300'
-                } ${isSaving === 'twilio_sms_enabled' ? 'opacity-50 cursor-wait' : ''}`}
-              >
-                <div className={`bg-white w-6 h-6 rounded-full shadow-md transform transition-transform duration-300 ${
-                  settings.twilio_sms_enabled ? 'translate-x-6' : ''
-                }`} />
-              </button>
+              <div>
+                <p className="text-sm font-medium text-gray-500">Total Registered Users</p>
+                <p className="text-3xl font-extrabold text-slate-800">{stats.totalUsers}</p>
+              </div>
             </div>
 
-            {/* CALL TOGGLE */}
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
-              <div className="flex items-start gap-4">
-                <div className={`p-3 rounded-lg ${settings.twilio_call_enabled ? 'bg-green-100 text-green-600' : 'bg-gray-200 text-gray-500'}`}>
-                  <PhoneCall size={24} />
-                </div>
-                <div>
-                  <h3 className="font-bold text-lg">Anonymous Proxy Calls</h3>
-                  <p className="text-sm text-gray-500 max-w-md">
-                    When active, Finders and Owners are bridged together via live phone call. When paused, users hear a maintenance message and the call drops immediately.
-                  </p>
-                </div>
+            {/* Total Tags Card */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+              <div className="bg-purple-50 p-4 rounded-xl">
+                <QrCode className="text-purple-600" size={28} />
               </div>
-
-              <button
-                onClick={() => toggleSetting('twilio_call_enabled', settings.twilio_call_enabled)}
-                disabled={isSaving === 'twilio_call_enabled'}
-                className={`w-14 h-8 flex items-center rounded-full p-1 transition-colors duration-300 focus:outline-none ${
-                  settings.twilio_call_enabled ? 'bg-green-500' : 'bg-gray-300'
-                } ${isSaving === 'twilio_call_enabled' ? 'opacity-50 cursor-wait' : ''}`}
-              >
-                <div className={`bg-white w-6 h-6 rounded-full shadow-md transform transition-transform duration-300 ${
-                  settings.twilio_call_enabled ? 'translate-x-6' : ''
-                }`} />
-              </button>
+              <div>
+                <p className="text-sm font-medium text-gray-500">Total Active QR Tags</p>
+                <p className="text-3xl font-extrabold text-slate-800">{stats.totalTags}</p>
+              </div>
             </div>
 
           </div>
-        </div>
+        </section>
+
+        {/* TWILIO ARCHITECTURE SECTION */}
+        <section>
+          <h2 className="text-lg font-bold text-slate-800 mb-4">Architecture & Integrations</h2>
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="bg-slate-800 px-6 py-4 border-b border-slate-700 flex items-center gap-2">
+              <ShieldCheck className="text-yellow-400" size={20} />
+              <h3 className="text-white font-semibold">Twilio Proxy Architecture</h3>
+            </div>
+            
+            <div className="p-6 space-y-6">
+              
+              {/* SMS Toggle */}
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
+                <div className="flex items-start gap-4">
+                  <div className="bg-gray-200 p-2 rounded-lg mt-1">
+                    <MessageSquare className="text-gray-600" size={20} />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-800">SMS OTP Verification</h4>
+                    <p className="text-sm text-gray-600 mt-1 max-w-lg">
+                      When active, the system sends real texts via Twilio. When paused, texts are intercepted and printed to the server terminal to save credits (Mock Mode).
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center">
+                  {/* Note: This is visually static for now, you can re-attach your toggle logic here! */}
+                  <div className={`w-14 h-8 flex items-center rounded-full p-1 cursor-not-allowed ${settings.twilio_sms_enabled ? 'bg-green-500' : 'bg-gray-300'}`}>
+                    <div className={`bg-white w-6 h-6 rounded-full shadow-md transform transition-transform ${settings.twilio_sms_enabled ? 'translate-x-6' : ''}`} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Call Toggle */}
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
+                <div className="flex items-start gap-4">
+                  <div className="bg-gray-200 p-2 rounded-lg mt-1">
+                    <PhoneCall className="text-gray-600" size={20} />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-800">Anonymous Proxy Calls</h4>
+                    <p className="text-sm text-gray-600 mt-1 max-w-lg">
+                      When active, Finders and Owners are bridged together via live phone call. When paused, users hear a maintenance message and the call drops immediately.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center">
+                  <div className={`w-14 h-8 flex items-center rounded-full p-1 cursor-not-allowed ${settings.twilio_call_enabled ? 'bg-green-500' : 'bg-gray-300'}`}>
+                    <div className={`bg-white w-6 h-6 rounded-full shadow-md transform transition-transform ${settings.twilio_call_enabled ? 'translate-x-6' : ''}`} />
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </section>
+
       </div>
     </div>
   );
