@@ -13,15 +13,19 @@ interface AdminUser { id: string; email: string; phoneNumber: string; createdAt:
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'overview' | 'tags' | 'users'>('overview');
   
+  // All UI State
+  const [activeTab, setActiveTab] = useState<'overview' | 'tags' | 'users' | 'logs'>('overview');
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  // All Data State
   const [settings, setSettings] = useState({ twilio_sms_enabled: false, twilio_call_enabled: false });
   const [stats, setStats] = useState({ totalUsers: 0, totalTags: 0, totalProxyCalls: 0 });
   const [tags, setTags] = useState<AdminTag[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
-  
-  const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [logs, setLogs] = useState<any[]>([]);
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -38,15 +42,18 @@ export default function DashboardPage() {
     const fetchData = async () => {
       try {
         const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
-        const [settingsRes, statsRes, tagsRes] = await Promise.all([
+        const [settingsRes, statsRes, tagsRes, logsRes] = await Promise.all([
           fetch(`${backendUrl}/api/admin/settings`),
           fetch(`${backendUrl}/api/admin/stats`),
           fetch(`${backendUrl}/api/admin/tags`),
+          fetch(`${backendUrl}/api/admin/logs`)
         ]);
 
         if (settingsRes.ok) setSettings(await settingsRes.json());
         if (statsRes.ok) setStats(await statsRes.json());
         if (tagsRes.ok) setTags(await tagsRes.json());
+        if (logsRes.ok) setLogs(await logsRes.json());
+        
         await fetchUsers();
       } catch (error) {
         console.error("Failed to load dashboard data:", error);
@@ -57,7 +64,9 @@ export default function DashboardPage() {
     fetchData();
   }, []);
 
-  // Idle Timer
+  
+  // IDLE TIMER AUTO-LOGOUT
+
   useEffect(() => {
     const INACTIVITY_TIME = 5 * 60 * 1000; 
     let timeoutId: number;
@@ -89,9 +98,9 @@ export default function DashboardPage() {
     router.refresh();
   };
 
-  // ==========================================
+  
   // USER MANAGEMENT ACTIONS
-  // ==========================================
+
   const handleUserAction = async (userId: string, action: 'delete' | 'suspend' | 'activate') => {
     const confirmMsg = action === 'delete' 
       ? "Are you sure you want to PERMANENTLY delete this user? This cannot be undone."
@@ -108,30 +117,25 @@ export default function DashboardPage() {
       });
 
       if (res.ok) {
-        // Refresh the user list to show changes
         await fetchUsers();
       } else {
         alert("Action failed. Check backend logs.");
       }
     } catch (error) {
-      console.error("Failed to load dashboard data:", error);
+      console.error("Failed user action:", error);
       alert("Network error.");
     }
   };
 
+ 
   // TWILIO SETTINGS TOGGLE
   
   const handleToggleSetting = async (settingName: 'twilio_sms_enabled' | 'twilio_call_enabled') => {
-    // 1. Calculate the new opposite value
     const newValue = !settings[settingName];
-
-    // 2. Optimistically update the UI instantly so it feels lightning fast
-    setSettings(prev => ({ ...prev, [settingName]: newValue }));
+    setSettings(prev => ({ ...prev, [settingName]: newValue })); // Optimistic UI
 
     try {
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
-      
-      // 3. Send the update to your Go backend
       const res = await fetch(`${backendUrl}/api/admin/update-setting`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -141,14 +145,11 @@ export default function DashboardPage() {
         })
       });
 
-      if (!res.ok) {
-        throw new Error("Failed to save to database");
-      }
+      if (!res.ok) throw new Error("Failed to save to database");
     } catch (error) {
       console.error("Settings update failed:", error);
       alert("Failed to update setting. Reverting...");
-      // 4. If the server crashes or network fails, snap the switch back!
-      setSettings(prev => ({ ...prev, [settingName]: !newValue }));
+      setSettings(prev => ({ ...prev, [settingName]: !newValue })); // Revert UI
     }
   };
 
@@ -187,13 +188,14 @@ export default function DashboardPage() {
       <div className="max-w-6xl mx-auto mt-8 px-6">
         
         {/* TAB NAVIGATION */}
-        <div className="flex space-x-4 mb-8 border-b border-gray-200">
-          <button onClick={() => setActiveTab('overview')} className={`pb-4 px-2 font-medium text-sm transition-colors ${activeTab === 'overview' ? 'border-b-2 border-slate-800 text-slate-800' : 'text-gray-500 hover:text-gray-700'}`}>System Overview</button>
-          <button onClick={() => setActiveTab('tags')} className={`pb-4 px-2 font-medium text-sm transition-colors ${activeTab === 'tags' ? 'border-b-2 border-slate-800 text-slate-800' : 'text-gray-500 hover:text-gray-700'}`}>Tag Directory</button>
-          <button onClick={() => setActiveTab('users')} className={`pb-4 px-2 font-medium text-sm transition-colors ${activeTab === 'users' ? 'border-b-2 border-slate-800 text-slate-800' : 'text-gray-500 hover:text-gray-700'}`}>User Manager</button>
+        <div className="flex space-x-4 mb-8 border-b border-gray-200 overflow-x-auto">
+          <button onClick={() => setActiveTab('overview')} className={`pb-4 px-2 font-medium text-sm transition-colors whitespace-nowrap ${activeTab === 'overview' ? 'border-b-2 border-slate-800 text-slate-800' : 'text-gray-500 hover:text-gray-700'}`}>System Overview</button>
+          <button onClick={() => setActiveTab('tags')} className={`pb-4 px-2 font-medium text-sm transition-colors whitespace-nowrap ${activeTab === 'tags' ? 'border-b-2 border-slate-800 text-slate-800' : 'text-gray-500 hover:text-gray-700'}`}>Tag Directory</button>
+          <button onClick={() => setActiveTab('users')} className={`pb-4 px-2 font-medium text-sm transition-colors whitespace-nowrap ${activeTab === 'users' ? 'border-b-2 border-slate-800 text-slate-800' : 'text-gray-500 hover:text-gray-700'}`}>User Manager</button>
+          <button onClick={() => setActiveTab('logs')} className={`pb-4 px-2 font-medium text-sm transition-colors whitespace-nowrap ${activeTab === 'logs' ? 'border-b-2 border-slate-800 text-slate-800' : 'text-gray-500 hover:text-gray-700'}`}>System Logs</button>
         </div>
 
-        {/* ================= TAB 1: SYSTEM OVERVIEW ================= */}
+        {/* SYSTEM OVERVIEW */}
         {activeTab === 'overview' && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -218,7 +220,7 @@ export default function DashboardPage() {
               </div>
               <div className="p-6 space-y-6">
                 
-                {/* RESTORED SMS TOGGLE */}
+                {/* SMS TOGGLE */}
                 <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
                   <div className="flex items-start gap-4">
                     <div className="bg-gray-200 p-2 rounded-lg mt-1"><MessageSquare className="text-gray-600" size={20} /></div>
@@ -235,7 +237,7 @@ export default function DashboardPage() {
                   </button>
                 </div>
 
-                {/* RESTORED CALL TOGGLE */}
+                {/* CALL TOGGLE */}
                 <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
                   <div className="flex items-start gap-4">
                     <div className="bg-gray-200 p-2 rounded-lg mt-1"><PhoneCall className="text-gray-600" size={20} /></div>
@@ -247,9 +249,9 @@ export default function DashboardPage() {
                  <button 
                   onClick={() => handleToggleSetting('twilio_call_enabled')}
                   className={`w-14 h-8 flex items-center rounded-full p-1 cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-800 ${settings.twilio_call_enabled ? 'bg-green-500' : 'bg-gray-300'}`}
-                >
+                 >
                   <div className={`bg-white w-6 h-6 rounded-full shadow-md transform transition-transform ${settings.twilio_call_enabled ? 'translate-x-6' : 'translate-x-0'}`} />
-                </button>
+                 </button>
                 </div>
 
               </div>
@@ -257,7 +259,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* ================= TAB 2: TAG DIRECTORY ================= */}
+        {/* TAG DIRECTORY */}
         {activeTab === 'tags' && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-500">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
@@ -296,7 +298,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* ================= TAB 3: USER MANAGER ================= */}
+        {/* USER MANAGER */}
         {activeTab === 'users' && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-500">
             <div className="p-6 border-b border-gray-100 bg-gray-50">
@@ -344,6 +346,46 @@ export default function DashboardPage() {
                     </tr>
                   ))}
                   {users.length === 0 && <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-500">No users found.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* SYSTEM LOGS  */}
+        {activeTab === 'logs' && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-500">
+            <div className="p-6 border-b border-gray-100 bg-gray-50">
+              <h2 className="text-lg font-bold text-slate-800">System Audit Trail</h2>
+              <p className="text-sm text-gray-500">View mock OTPs, system alerts, and developer logs.</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm text-gray-600">
+                <thead className="bg-gray-50 text-gray-500 font-medium border-b border-gray-100">
+                  <tr>
+                    <th className="px-6 py-4">Date & Time</th>
+                    <th className="px-6 py-4">Action Type</th>
+                    <th className="px-6 py-4">Details / Mock Data</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {logs.map((log) => {
+                    let displayDetails = log.details;
+                    try {
+                      const parsed = JSON.parse(log.details);
+                      displayDetails = Object.entries(parsed).map(([k, v]) => `${k}: ${v}`).join(' | ');
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    } catch (e) {}
+
+                    return (
+                      <tr key={log.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap">{new Date(log.createdAt).toLocaleString()}</td>
+                        <td className="px-6 py-4 font-semibold text-slate-800"><span className="bg-slate-100 px-2 py-1 rounded-md">{log.actionType}</span></td>
+                        <td className="px-6 py-4 font-mono text-xs text-blue-600">{displayDetails}</td>
+                      </tr>
+                    );
+                  })}
+                  {logs.length === 0 && <tr><td colSpan={3} className="px-6 py-8 text-center text-gray-500">No system logs found.</td></tr>}
                 </tbody>
               </table>
             </div>
