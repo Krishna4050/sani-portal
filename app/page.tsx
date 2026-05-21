@@ -119,6 +119,39 @@ export default function DashboardPage() {
     }
   };
 
+  // TWILIO SETTINGS TOGGLE
+  
+  const handleToggleSetting = async (settingName: 'twilio_sms_enabled' | 'twilio_call_enabled') => {
+    // 1. Calculate the new opposite value
+    const newValue = !settings[settingName];
+
+    // 2. Optimistically update the UI instantly so it feels lightning fast
+    setSettings(prev => ({ ...prev, [settingName]: newValue }));
+
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
+      
+      // 3. Send the update to your Go backend
+      const res = await fetch(`${backendUrl}/api/admin/update-setting`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          setting_name: settingName, 
+          setting_value: newValue 
+        })
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to save to database");
+      }
+    } catch (error) {
+      console.error("Settings update failed:", error);
+      alert("Failed to update setting. Reverting...");
+      // 4. If the server crashes or network fails, snap the switch back!
+      setSettings(prev => ({ ...prev, [settingName]: !newValue }));
+    }
+  };
+
   const filteredTags = tags.filter(tag => 
     tag.tagId.toLowerCase().includes(searchQuery.toLowerCase()) || 
     tag.ownerId.toLowerCase().includes(searchQuery.toLowerCase())
@@ -194,9 +227,12 @@ export default function DashboardPage() {
                       <p className="text-sm text-gray-600 mt-1 max-w-lg">System texts via Twilio. Paused mode intercepts texts to terminal (Mock Mode).</p>
                     </div>
                   </div>
-                  <div className={`w-14 h-8 flex items-center rounded-full p-1 ${settings.twilio_sms_enabled ? 'bg-green-500' : 'bg-gray-300'}`}>
-                    <div className={`bg-white w-6 h-6 rounded-full shadow-md transform transition-transform ${settings.twilio_sms_enabled ? 'translate-x-6' : ''}`} />
-                  </div>
+                  <button 
+                    onClick={() => handleToggleSetting('twilio_sms_enabled')}
+                    className={`w-14 h-8 flex items-center rounded-full p-1 cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-800 ${settings.twilio_sms_enabled ? 'bg-green-500' : 'bg-gray-300'}`}
+                   >
+                    <div className={`bg-white w-6 h-6 rounded-full shadow-md transform transition-transform ${settings.twilio_sms_enabled ? 'translate-x-6' : 'translate-x-0'}`} />
+                  </button>
                 </div>
 
                 {/* RESTORED CALL TOGGLE */}
@@ -208,9 +244,12 @@ export default function DashboardPage() {
                       <p className="text-sm text-gray-600 mt-1 max-w-lg">When active, users are bridged via live phone call. When paused, calls are dropped.</p>
                     </div>
                   </div>
-                  <div className={`w-14 h-8 flex items-center rounded-full p-1 ${settings.twilio_call_enabled ? 'bg-green-500' : 'bg-gray-300'}`}>
-                    <div className={`bg-white w-6 h-6 rounded-full shadow-md transform transition-transform ${settings.twilio_call_enabled ? 'translate-x-6' : ''}`} />
-                  </div>
+                 <button 
+                  onClick={() => handleToggleSetting('twilio_call_enabled')}
+                  className={`w-14 h-8 flex items-center rounded-full p-1 cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-800 ${settings.twilio_call_enabled ? 'bg-green-500' : 'bg-gray-300'}`}
+                >
+                  <div className={`bg-white w-6 h-6 rounded-full shadow-md transform transition-transform ${settings.twilio_call_enabled ? 'translate-x-6' : 'translate-x-0'}`} />
+                </button>
                 </div>
 
               </div>
