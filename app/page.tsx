@@ -42,11 +42,15 @@ export default function DashboardPage() {
     const fetchData = async () => {
       try {
         const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
+        
+        // ADDED A CACHE BUSTER TO THE LOGS FETCH
+        const timestamp = new Date().getTime(); 
+
         const [settingsRes, statsRes, tagsRes, logsRes] = await Promise.all([
           fetch(`${backendUrl}/api/admin/settings`),
           fetch(`${backendUrl}/api/admin/stats`),
           fetch(`${backendUrl}/api/admin/tags`),
-          fetch(`${backendUrl}/api/admin/logs`)
+          fetch(`${backendUrl}/api/admin/logs?t=${timestamp}`) // <-- Bypass browser cache!
         ]);
 
         if (settingsRes.ok) setSettings(await settingsRes.json());
