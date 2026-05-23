@@ -1,31 +1,16 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
 import { 
-  ShieldCheck, LogOut, Users, QrCode, MessageSquare, PhoneCall, Loader2, Search, Tag, 
-  Mail, Calendar, Ban, Trash2, CheckCircle, Store, Check, X, ChevronDown, ChevronUp, 
-  MapPin, FileText, Image as ImageIcon, PauseCircle, AlertTriangle 
+  ShieldCheck, LogOut, Users, QrCode, MessageSquare, 
+  PhoneCall, Loader2, Search, Tag, Mail, Calendar, Ban, Trash2, CheckCircle, Store, Check, X 
 } from 'lucide-react';
 
 interface AdminTag { tagId: string; ownerId: string; isClaimed: boolean; createdAt: string; }
 interface AdminUser { id: string; email: string; phoneNumber: string; createdAt: string; isBanned: boolean; }
-interface AdminHost {
-  shopId: string;
-  managerId: string;
-  managerEmail: string;
-  shopName: string;
-  status: string;
-  createdAt: string;
-  street: string;
-  city: string;
-  phone: string;
-  documentUrl: string;
-  shopTypes: string[];
-  amenities: string[];
-  photos: string[];
-}
+interface AdminHost { companyId: string; managerId: string; managerEmail: string; companyName: string; registrationId: string; status: string; createdAt: string; }
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -35,7 +20,6 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [expandedHostId, setExpandedHostId] = useState<string | null>(null);
   
   // All Data State
   const [settings, setSettings] = useState({ twilio_sms_enabled: false, twilio_call_enabled: false });
@@ -60,12 +44,15 @@ export default function DashboardPage() {
       ]);
       if (usersRes.ok) setUsers(await usersRes.json());
       if (hostsRes.ok) setHosts(await hostsRes.json());
-    } catch (error) { console.error("Failed to load users or hosts:", error); }
+    } catch (error) {
+      console.error("Failed to load users or hosts:", error);
+    }
   };
 
   const fetchAllData = async () => {
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
     const timestamp = new Date().getTime(); 
+
     try {
       const [settingsRes, statsRes, tagsRes, logsRes] = await Promise.all([
         fetch(`${backendUrl}/api/admin/settings`),
@@ -80,8 +67,11 @@ export default function DashboardPage() {
       if (logsRes.ok) setLogs(await logsRes.json());
       
       await fetchUsersAndHosts();
-    } catch (error) { console.error("Failed to load dashboard data:", error); } 
-    finally { setIsLoading(false); }
+    } catch (error) {
+      console.error("Failed to load dashboard data:", error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -93,18 +83,22 @@ export default function DashboardPage() {
   useEffect(() => {
     const INACTIVITY_TIME = 5 * 60 * 1000; 
     let timeoutId: number;
+
     const logoutUser = async () => {
       await supabase.auth.signOut();
       router.push('/login');
       router.refresh();
     };
+
     const resetTimer = () => {
       if (timeoutId) window.clearTimeout(timeoutId);
       timeoutId = window.setTimeout(logoutUser, INACTIVITY_TIME);
     };
+
     const events = ['mousemove', 'keydown', 'scroll', 'click', 'touchstart'];
     events.forEach((event) => window.addEventListener(event, resetTimer));
     resetTimer();
+
     return () => {
       if (timeoutId) window.clearTimeout(timeoutId);
       events.forEach((event) => window.removeEventListener(event, resetTimer));
@@ -131,36 +125,33 @@ export default function DashboardPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, action })
       });
-      if (res.ok) await fetchUsersAndHosts();
+
+      if (res.ok) {
+        await fetchUsersAndHosts();
+      } else {
+        alert("Action failed. Check backend logs.");
+      }
     } catch (error) {
-      console.error("Failed to load data:", error);
+      console.error("Failed user action:", error);
+      alert("Network error.");
     }
   };
 
-  // LIFECYCLE MANAGEMENT FOR HOSTS
-  const handleHostAction = async (shopId: string, action: 'approve' | 'reject' | 'pause' | 'suspend' | 'delete') => {
-    const messages = {
-      'approve': 'Approve and activate this shop?',
-      'reject': 'Reject this application?',
-      'pause': 'Pause this shop? (Temporarily hides them from the public map)',
-      'suspend': 'Suspend this shop? (Severe violation)',
-      'delete': 'Delete this shop? (Soft delete for legal compliance, allows host to re-register)'
-    };
-
-    if (!window.confirm(messages[action])) return;
+  const handleHostVerification = async (companyId: string, action: 'approve' | 'reject') => {
+    if (!window.confirm(`Are you sure you want to ${action.toUpperCase()} this host? An email will be sent.`)) return;
     try {
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
       const res = await fetch(`${backendUrl}/api/admin/hosts/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shopId, action })
+        body: JSON.stringify({ companyId, action })
       });
       if (res.ok) {
-        setExpandedHostId(null);
-        await fetchAllData();
+        await fetchAllData(); // Refresh list to show new status and logs
       }
     } catch (error) {
-      console.log("Action failed.",error);
+      console.error("Host verification failed:", error);
+      alert("Verification failed.");
     }
   };
 
@@ -169,15 +160,17 @@ export default function DashboardPage() {
     setSettings(prev => ({ ...prev, [settingName]: newValue })); 
     try {
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
-      await fetch(`${backendUrl}/api/admin/update-setting`, {
+      const res = await fetch(`${backendUrl}/api/admin/update-setting`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ setting_name: settingName, setting_value: newValue })
       });
-    } catch (error) { 
-      setSettings(prev => ({ ...prev, [settingName]: !newValue }));
-      console.log("Error",error)
-     }
+      if (!res.ok) throw new Error("Failed to save to database");
+    } catch (error) {
+      console.error("Settings update failed:", error);
+      alert("Failed to update setting. Reverting...");
+      setSettings(prev => ({ ...prev, [settingName]: !newValue })); 
+    }
   };
 
   const filteredTags = tags.filter(tag => 
@@ -185,19 +178,13 @@ export default function DashboardPage() {
     (tag.ownerId && tag.ownerId.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  const StatusBadge = ({ status }: { status: string }) => {
-    switch(status) {
-      case 'verified': return <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold uppercase tracking-wider">Verified & Active</span>;
-      case 'pending': return <span className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-bold uppercase tracking-wider">Awaiting Review</span>;
-      case 'rejected': return <span className="px-3 py-1 bg-red-50 text-red-600 rounded-full text-xs font-bold uppercase tracking-wider">Rejected</span>;
-      case 'paused': return <span className="px-3 py-1 bg-orange-100 text-orange-700 rounded-full text-xs font-bold uppercase tracking-wider">Paused</span>;
-      case 'suspended': return <span className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-xs font-bold uppercase tracking-wider">Suspended</span>;
-      case 'deleted': return <span className="px-3 py-1 bg-gray-200 text-gray-500 rounded-full text-xs font-bold uppercase tracking-wider">Soft Deleted</span>;
-      default: return <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-bold uppercase tracking-wider">{status}</span>;
-    }
-  };
-
-  if (isLoading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center"><Loader2 className="animate-spin text-slate-800" size={40} /></div>;
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Loader2 className="animate-spin text-slate-800" size={40} />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans pb-12">
@@ -213,14 +200,14 @@ export default function DashboardPage() {
 
       <div className="max-w-6xl mx-auto mt-8 px-6">
         <div className="flex space-x-4 mb-8 border-b border-gray-200 overflow-x-auto">
-          {(['overview', 'tags', 'users', 'hosts', 'logs'] as TabType[]).map((tab) => (
-            <button key={tab} onClick={() => setActiveTab(tab)} className={`pb-4 px-2 font-medium text-sm capitalize whitespace-nowrap transition-colors ${activeTab === tab ? 'border-b-2 border-slate-800 text-slate-800' : 'text-gray-500 hover:text-gray-700'}`}>
-              {tab === 'hosts' ? 'Partner Lifecycle' : tab}
-            </button>
-          ))}
+          <button onClick={() => setActiveTab('overview')} className={`pb-4 px-2 font-medium text-sm transition-colors whitespace-nowrap ${activeTab === 'overview' ? 'border-b-2 border-slate-800 text-slate-800' : 'text-gray-500 hover:text-gray-700'}`}>System Overview</button>
+          <button onClick={() => setActiveTab('tags')} className={`pb-4 px-2 font-medium text-sm transition-colors whitespace-nowrap ${activeTab === 'tags' ? 'border-b-2 border-slate-800 text-slate-800' : 'text-gray-500 hover:text-gray-700'}`}>Tag Directory</button>
+          <button onClick={() => setActiveTab('users')} className={`pb-4 px-2 font-medium text-sm transition-colors whitespace-nowrap ${activeTab === 'users' ? 'border-b-2 border-slate-800 text-slate-800' : 'text-gray-500 hover:text-gray-700'}`}>User Manager</button>
+          <button onClick={() => setActiveTab('hosts')} className={`pb-4 px-2 font-medium text-sm transition-colors whitespace-nowrap ${activeTab === 'hosts' ? 'border-b-2 border-slate-800 text-slate-800' : 'text-gray-500 hover:text-gray-700'}`}>Host Applications</button>
+          <button onClick={() => setActiveTab('logs')} className={`pb-4 px-2 font-medium text-sm transition-colors whitespace-nowrap ${activeTab === 'logs' ? 'border-b-2 border-slate-800 text-slate-800' : 'text-gray-500 hover:text-gray-700'}`}>System Logs</button>
         </div>
 
-        {/* ================= TAB 1: SYSTEM OVERVIEW ================= */}
+        {/* SYSTEM OVERVIEW  */}
         {activeTab === 'overview' && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -252,7 +239,7 @@ export default function DashboardPage() {
                       <p className="text-sm text-gray-600 mt-1 max-w-lg">System texts via Twilio. Paused mode intercepts texts to terminal (Mock Mode).</p>
                     </div>
                   </div>
-                  <button onClick={() => handleToggleSetting('twilio_sms_enabled')} className={`w-14 h-8 flex items-center rounded-full p-1 cursor-pointer transition-colors ${settings.twilio_sms_enabled ? 'bg-green-500' : 'bg-gray-300'}`}>
+                  <button onClick={() => handleToggleSetting('twilio_sms_enabled')} className={`w-14 h-8 flex items-center rounded-full p-1 cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-800 ${settings.twilio_sms_enabled ? 'bg-green-500' : 'bg-gray-300'}`}>
                     <div className={`bg-white w-6 h-6 rounded-full shadow-md transform transition-transform ${settings.twilio_sms_enabled ? 'translate-x-6' : 'translate-x-0'}`} />
                   </button>
                 </div>
@@ -265,7 +252,7 @@ export default function DashboardPage() {
                       <p className="text-sm text-gray-600 mt-1 max-w-lg">When active, users are bridged via live phone call. When paused, calls are dropped.</p>
                     </div>
                   </div>
-                 <button onClick={() => handleToggleSetting('twilio_call_enabled')} className={`w-14 h-8 flex items-center rounded-full p-1 cursor-pointer transition-colors ${settings.twilio_call_enabled ? 'bg-green-500' : 'bg-gray-300'}`}>
+                 <button onClick={() => handleToggleSetting('twilio_call_enabled')} className={`w-14 h-8 flex items-center rounded-full p-1 cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-800 ${settings.twilio_call_enabled ? 'bg-green-500' : 'bg-gray-300'}`}>
                   <div className={`bg-white w-6 h-6 rounded-full shadow-md transform transition-transform ${settings.twilio_call_enabled ? 'translate-x-6' : 'translate-x-0'}`} />
                  </button>
                 </div>
@@ -274,7 +261,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* ================= TAB 2: TAG DIRECTORY ================= */}
+        {/*  TAG DIRECTORY */}
         {activeTab === 'tags' && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-500">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
@@ -309,7 +296,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* ================= TAB 3: USER MANAGER ================= */}
+        {/* USER MANAGER */}
         {activeTab === 'users' && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-500">
             <div className="p-6 border-b border-gray-100 bg-gray-50"><h2 className="text-lg font-bold text-slate-800">Registered Users</h2></div>
@@ -342,135 +329,65 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* ================= TAB 4: PARTNER LIFECYCLE (DEEP X-RAY) ================= */}
+        {/* HOST APPLICATIONS */}
         {activeTab === 'hosts' && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-500">
             <div className="p-6 border-b border-gray-100 bg-gray-50">
-              <h2 className="text-lg font-bold text-slate-800">Partner Lifecycle Management</h2>
-              <p className="text-sm text-gray-500">Click any row to reveal deep diagnostics and lifecycle controls.</p>
+              <h2 className="text-lg font-bold text-slate-800">Partner Host Verifications</h2>
+              <p className="text-sm text-gray-500">Approve or reject companies applying to host shop locations. Approvals trigger an automated email.</p>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm text-gray-600 border-collapse">
-                <thead className="bg-white text-gray-500 font-medium border-b border-gray-100">
+              <table className="w-full text-left text-sm text-gray-600">
+                <thead className="bg-gray-50 text-gray-500 font-medium border-b border-gray-100">
                   <tr>
-                    <th className="px-6 py-4">Shop Identity</th>
-                    <th className="px-6 py-4">Manager Contact</th>
-                    <th className="px-6 py-4">Current Status</th>
-                    <th className="px-6 py-4 text-right">Details</th>
+                    <th className="px-6 py-4">Company Name</th>
+                    <th className="px-6 py-4">Manager Email</th>
+                    <th className="px-6 py-4">Business Reg. ID</th>
+                    <th className="px-6 py-4">Status</th>
+                    <th className="px-6 py-4 text-right">Verification Action</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-gray-100">
                   {hosts.map((host) => (
-                    <React.Fragment key={host.shopId}>
-                      {/* MAIN ROW */}
-                      <tr 
-                        className={`transition-colors cursor-pointer border-b border-gray-50 ${expandedHostId === host.shopId ? 'bg-slate-50' : 'hover:bg-gray-50'}`}
-                        onClick={() => setExpandedHostId(expandedHostId === host.shopId ? null : host.shopId)}
-                      >
-                        <td className="px-6 py-4 font-semibold text-slate-800 flex items-center gap-2">
-                          <Store size={18} className="text-gray-400" /> {host.shopName}
-                        </td>
-                        <td className="px-6 py-4 text-gray-500">{host.managerEmail}</td>
-                        <td className="px-6 py-4"><StatusBadge status={host.status} /></td>
-                        <td className="px-6 py-4 text-right text-gray-400">
-                          {expandedHostId === host.shopId ? <ChevronUp size={20} className="inline"/> : <ChevronDown size={20} className="inline"/>}
-                        </td>
-                      </tr>
-
-                      {/* EXPANDED DIAGNOSTICS DRAWER */}
-                      {expandedHostId === host.shopId && (
-                        <tr className="bg-slate-50 border-b border-gray-200">
-                          <td colSpan={4} className="px-8 py-6">
-                            
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-                              {/* Left Column: Data */}
-                              <div className="space-y-4">
-                                <div>
-                                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1"><MapPin size={14}/> Physical Location</h4>
-                                  <p className="text-slate-800 font-medium">{host.street}, {host.city}</p>
-                                </div>
-                                <div>
-                                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1"><PhoneCall size={14}/> Support Contact</h4>
-                                  <p className="text-slate-800 font-mono">{host.phone || 'N/A'}</p>
-                                </div>
-                                <div>
-                                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1"><Tag size={14}/> Categories & Amenities</h4>
-                                  <div className="flex flex-wrap gap-2 mt-1">
-                                    {host.shopTypes?.map((t, i) => <span key={i} className="px-2 py-1 bg-white border border-gray-200 rounded-md text-xs font-medium">{t}</span>)}
-                                    {host.amenities?.map((a, i) => <span key={i} className="px-2 py-1 bg-white border border-gray-200 rounded-md text-xs text-gray-500">{a}</span>)}
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Right Column: Assets */}
-                              <div className="space-y-4">
-                                <div>
-                                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1"><FileText size={14}/> Verification Document</h4>
-                                  {host.documentUrl ? (
-                                    <a href={host.documentUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-800 text-sm font-medium underline">Open Secure Document</a>
-                                  ) : (<span className="text-gray-400 text-sm italic">No document uploaded</span>)}
-                                </div>
-                                <div>
-                                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1"><ImageIcon size={14}/> Location Photos</h4>
-                                  {host.photos && host.photos.length > 0 && host.photos[0] !== "" ? (
-                                    <div className="flex gap-2 mt-2 overflow-x-auto">
-                                      {host.photos.map((p, i) => (
-                                        <a key={i} href={p} target="_blank" rel="noreferrer">
-                                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                                          <img src={p} alt="Shop" className="w-16 h-16 rounded-md object-cover border border-gray-200 hover:opacity-80 transition-opacity" />
-                                        </a>
-                                      ))}
-                                    </div>
-                                  ) : (<span className="text-gray-400 text-sm italic">No photos available</span>)}
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* LIFECYCLE ACTION BAR */}
-                            <div className="flex flex-wrap items-center gap-3 pt-4 border-t border-gray-200">
-                              <span className="text-xs font-bold text-slate-800 uppercase tracking-wider mr-2">Lifecycle Controls:</span>
-                              
-                              {host.status === 'pending' && (
-                                <>
-                                  <button onClick={() => handleHostAction(host.shopId, 'approve')} className="flex items-center gap-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold transition-colors"><Check size={16}/> Approve & Activate</button>
-                                  <button onClick={() => handleHostAction(host.shopId, 'reject')} className="flex items-center gap-1 px-4 py-2 border border-red-200 text-red-600 hover:bg-red-50 rounded-lg text-sm font-semibold transition-colors"><X size={16}/> Reject Application</button>
-                                </>
-                              )}
-
-                              {host.status === 'verified' && (
-                                <>
-                                  <button onClick={() => handleHostAction(host.shopId, 'pause')} className="flex items-center gap-1 px-4 py-2 bg-orange-100 hover:bg-orange-200 text-orange-800 rounded-lg text-sm font-semibold transition-colors"><PauseCircle size={16}/> Pause Visibility</button>
-                                  <button onClick={() => handleHostAction(host.shopId, 'suspend')} className="flex items-center gap-1 px-4 py-2 bg-red-100 hover:bg-red-200 text-red-800 rounded-lg text-sm font-semibold transition-colors"><AlertTriangle size={16}/> Suspend Account</button>
-                                </>
-                              )}
-
-                              {(host.status === 'paused' || host.status === 'suspended' || host.status === 'rejected') && (
-                                <button onClick={() => handleHostAction(host.shopId, 'approve')} className="flex items-center gap-1 px-4 py-2 border border-green-600 text-green-700 hover:bg-green-50 rounded-lg text-sm font-semibold transition-colors"><Check size={16}/> Re-Activate Shop</button>
-                              )}
-
-                              {/* GLOBAL ACTIONS FOR ALL STATUSES */}
-                              <div className="flex-1" /> {/* Spacer */}
-                              
-                              <a href={`mailto:${host.managerEmail}`} className="flex items-center gap-1 px-3 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-slate-700 rounded-lg text-sm font-semibold transition-colors"><Mail size={16}/> Custom Email</a>
-                              
-                              {host.status !== 'deleted' && (
-                                <button onClick={() => handleHostAction(host.shopId, 'delete')} className="flex items-center gap-1 px-3 py-2 bg-white border border-red-200 hover:bg-red-50 text-red-600 rounded-lg text-sm font-semibold transition-colors" title="Soft Delete"><Trash2 size={16}/> Wipe Record</button>
-                              )}
-                            </div>
-
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
+                    <tr key={host.companyId} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4 font-semibold text-slate-800 flex items-center gap-2 mt-1">
+                        <Store size={18} className="text-gray-400" /> {host.companyName}
+                      </td>
+                      <td className="px-6 py-4">{host.managerEmail}</td>
+                      <td className="px-6 py-4 font-mono text-xs">{host.registrationId}</td>
+                      <td className="px-6 py-4">
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                          host.status === 'verified' ? 'bg-green-100 text-green-700' :
+                          host.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                          'bg-yellow-100 text-yellow-700'
+                        }`}>
+                          {host.status.replace('_', ' ').toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right space-x-2">
+                        {host.status === 'pending_verification' ? (
+                          <>
+                            <button onClick={() => handleHostVerification(host.companyId, 'approve')} className="p-2 bg-green-50 text-green-600 hover:bg-green-100 rounded-md transition-colors" title="Approve & Send Email">
+                              <Check size={18} />
+                            </button>
+                            <button onClick={() => handleHostVerification(host.companyId, 'reject')} className="p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-md transition-colors" title="Reject Application">
+                              <X size={18} />
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-xs text-gray-400 font-medium">Processed</span>
+                        )}
+                      </td>
+                    </tr>
                   ))}
-                  {hosts.length === 0 && <tr><td colSpan={4} className="px-6 py-8 text-center text-gray-500">No host applications found.</td></tr>}
+                  {hosts.length === 0 && <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-500">No host applications found.</td></tr>}
                 </tbody>
               </table>
             </div>
           </div>
         )}
 
-        {/* ================= TAB 5: SYSTEM LOGS ================= */}
+        {/*  SYSTEM LOGS */}
         {activeTab === 'logs' && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-500">
             <div className="p-6 border-b border-gray-100 bg-gray-50"><h2 className="text-lg font-bold text-slate-800">System Audit Trail</h2></div>
