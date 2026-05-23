@@ -6,7 +6,7 @@ import { createBrowserClient } from '@supabase/ssr';
 import { 
   ShieldCheck, LogOut, Users, QrCode, MessageSquare, PhoneCall, Loader2, Search, Tag, 
   Mail, Calendar, Ban, Trash2, CheckCircle, Store, Check, X, ChevronDown, ChevronUp, 
-  MapPin, FileText, Image as ImageIcon, PauseCircle, AlertTriangle 
+  MapPin, FileText, Image as ImageIcon, PauseCircle, AlertTriangle, PlayCircle, Send, Paperclip, AlertOctagon 
 } from 'lucide-react';
 
 interface AdminTag { tagId: string; ownerId: string; isClaimed: boolean; createdAt: string; }
@@ -37,6 +37,11 @@ export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedHostId, setExpandedHostId] = useState<string | null>(null);
   
+  // NEW: Lightbox & Communication State
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const [composeHost, setComposeHost] = useState<AdminHost | null>(null);
+  const [msgSending, setMsgSending] = useState(false);
+
   // All Data State
   const [settings, setSettings] = useState({ twilio_sms_enabled: false, twilio_call_enabled: false });
   const [stats, setStats] = useState({ totalUsers: 0, totalTags: 0, totalProxyCalls: 0 });
@@ -160,7 +165,39 @@ export default function DashboardPage() {
         await fetchAllData();
       }
     } catch (error) {
-      console.log("Action failed.",error);
+      console.error("Action failed.", error);
+    }
+  };
+
+  // NEW: COMMUNICATION HANDLER
+  const handleSendMessage = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!composeHost) return;
+    setMsgSending(true);
+
+    const formData = new FormData(e.currentTarget);
+    formData.append('shopId', composeHost.shopId);
+    formData.append('to', composeHost.managerEmail);
+
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
+      const res = await fetch(`${backendUrl}/api/admin/communicate`, {
+        method: 'POST', 
+        body: formData 
+      });
+      
+      if (res.ok) {
+        alert("Message sent successfully!");
+        setComposeHost(null);
+        fetchAllData(); 
+      } else {
+        alert("Failed to send message. Check backend connection.");
+      }
+    } catch (error) {
+      console.error("Communication error", error);
+      alert("Network error.");
+    } finally {
+      setMsgSending(false);
     }
   };
 
@@ -176,8 +213,8 @@ export default function DashboardPage() {
       });
     } catch (error) { 
       setSettings(prev => ({ ...prev, [settingName]: !newValue }));
-      console.log("Error",error)
-     }
+      console.error("Error", error);
+    }
   };
 
   const filteredTags = tags.filter(tag => 
@@ -201,6 +238,89 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans pb-12">
+      
+      {/* 1. PHOTO LIGHTBOX OVERLAY */}
+      {lightboxImage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900 bg-opacity-95 p-4" onClick={() => setLightboxImage(null)}>
+          <button className="absolute top-6 right-6 text-white hover:text-gray-300 transition-colors" onClick={() => setLightboxImage(null)}><X size={36} /></button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={lightboxImage} alt="Shop Expansion" className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl" />
+        </div>
+      )}
+
+      {/* 2. COMMUNICATION COMPOSER OVERLAY */}
+      {composeHost && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900 bg-opacity-60 p-4">
+          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-slate-800 px-6 py-4 flex justify-between items-center">
+              <h3 className="text-white font-bold flex items-center gap-2"><Mail size={18}/> Contact {composeHost.shopName}</h3>
+              <button onClick={() => setComposeHost(null)} className="text-gray-400 hover:text-white"><X size={20}/></button>
+            </div>
+            
+            <form onSubmit={handleSendMessage} className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">To</label>
+                  <input type="text" disabled value={composeHost.managerEmail} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">CC (Optional)</label>
+                  <input 
+                    type="text" 
+                    name="cc" 
+                    defaultValue={composeHost.phone !== composeHost.managerEmail ? "" : ""} 
+                    placeholder="additional@email.com" 
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-800 outline-none" 
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Subject</label>
+                <input type="text" name="subject" required placeholder="Subject of your message" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-800 outline-none" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Priority</label>
+                  <select name="priority" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-800 outline-none">
+                    <option value="normal">Normal</option>
+                    <option value="urgent">Urgent</option>
+                    <option value="alert">Security Alert</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Multi-Channel</label>
+                  <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                    <input type="checkbox" name="sendSms" value="true" className="w-4 h-4 text-slate-800 rounded border-gray-300 focus:ring-slate-800" />
+                    <span className="text-sm text-gray-700 font-medium">Also send via SMS text</span>
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Message Body</label>
+                <textarea name="body" required rows={5} placeholder="Type your message here..." className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-800 outline-none resize-none" />
+              </div>
+
+              <div className="border border-dashed border-gray-300 bg-gray-50 rounded-lg p-4 flex items-center justify-center gap-2 cursor-pointer hover:bg-gray-100 transition-colors">
+                <Paperclip size={18} className="text-gray-500" />
+                <span className="text-sm font-medium text-gray-600">Attach files, images, or videos (Optional)</span>
+                <input type="file" name="attachments" multiple className="hidden" />
+              </div>
+
+              <div className="pt-4 flex justify-end gap-3 border-t border-gray-100">
+                <button type="button" onClick={() => setComposeHost(null)} className="px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
+                <button type="submit" disabled={msgSending} className="px-6 py-2 bg-slate-800 hover:bg-slate-900 text-white text-sm font-semibold rounded-lg flex items-center gap-2 disabled:opacity-50">
+                  {msgSending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} Send Communication
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* NAV BAR */}
       <nav className="bg-white border-b border-gray-200 px-8 py-4 flex justify-between items-center sticky top-0 z-10 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="bg-slate-800 p-2 rounded-lg"><ShieldCheck className="text-green-400" size={24} /></div>
@@ -342,7 +462,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* ================= TAB 4: PARTNER LIFECYCLE (DEEP X-RAY) ================= */}
+        {/* ================= TAB 4: PARTNER LIFECYCLE ================= */}
         {activeTab === 'hosts' && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-500">
             <div className="p-6 border-b border-gray-100 bg-gray-50">
@@ -362,7 +482,6 @@ export default function DashboardPage() {
                 <tbody>
                   {hosts.map((host) => (
                     <React.Fragment key={host.shopId}>
-                      {/* MAIN ROW */}
                       <tr 
                         className={`transition-colors cursor-pointer border-b border-gray-50 ${expandedHostId === host.shopId ? 'bg-slate-50' : 'hover:bg-gray-50'}`}
                         onClick={() => setExpandedHostId(expandedHostId === host.shopId ? null : host.shopId)}
@@ -377,13 +496,11 @@ export default function DashboardPage() {
                         </td>
                       </tr>
 
-                      {/* EXPANDED DIAGNOSTICS DRAWER */}
                       {expandedHostId === host.shopId && (
                         <tr className="bg-slate-50 border-b border-gray-200">
                           <td colSpan={4} className="px-8 py-6">
                             
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-                              {/* Left Column: Data */}
                               <div className="space-y-4">
                                 <div>
                                   <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1"><MapPin size={14}/> Physical Location</h4>
@@ -402,7 +519,6 @@ export default function DashboardPage() {
                                 </div>
                               </div>
 
-                              {/* Right Column: Assets */}
                               <div className="space-y-4">
                                 <div>
                                   <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1"><FileText size={14}/> Verification Document</h4>
@@ -413,12 +529,16 @@ export default function DashboardPage() {
                                 <div>
                                   <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1"><ImageIcon size={14}/> Location Photos</h4>
                                   {host.photos && host.photos.length > 0 && host.photos[0] !== "" ? (
-                                    <div className="flex gap-2 mt-2 overflow-x-auto">
+                                    <div className="flex gap-2 mt-2 overflow-x-auto pb-2">
+                                      {/* 3. IN-APP LIGHTBOX TRIGGER FOR PHOTOS */}
                                       {host.photos.map((p, i) => (
-                                        <a key={i} href={p} target="_blank" rel="noreferrer">
+                                        <button key={i} onClick={() => setLightboxImage(p)} className="shrink-0 relative group outline-none focus:ring-2 focus:ring-slate-800 rounded-lg">
+                                          <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all rounded-lg flex items-center justify-center">
+                                            <Search className="text-white opacity-0 group-hover:opacity-100 transition-opacity" size={24} />
+                                          </div>
                                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                                          <img src={p} alt="Shop" className="w-16 h-16 rounded-md object-cover border border-gray-200 hover:opacity-80 transition-opacity" />
-                                        </a>
+                                          <img src={p} alt="Shop Thumbnail" className="w-20 h-20 rounded-lg object-cover border border-gray-200 shadow-sm" />
+                                        </button>
                                       ))}
                                     </div>
                                   ) : (<span className="text-gray-400 text-sm italic">No photos available</span>)}
@@ -444,14 +564,19 @@ export default function DashboardPage() {
                                 </>
                               )}
 
-                              {(host.status === 'paused' || host.status === 'suspended' || host.status === 'rejected') && (
-                                <button onClick={() => handleHostAction(host.shopId, 'approve')} className="flex items-center gap-1 px-4 py-2 border border-green-600 text-green-700 hover:bg-green-50 rounded-lg text-sm font-semibold transition-colors"><Check size={16}/> Re-Activate Shop</button>
+                              {/* EXPLICIT RESUME BUTTONS FOR PAUSED/SUSPENDED */}
+                              {host.status === 'paused' && (
+                                <button onClick={() => handleHostAction(host.shopId, 'approve')} className="flex items-center gap-1 px-4 py-2 border border-green-600 text-green-700 hover:bg-green-50 rounded-lg text-sm font-semibold transition-colors"><PlayCircle size={16}/> Resume Shop Visibility</button>
+                              )}
+                              
+                              {host.status === 'suspended' && (
+                                <button onClick={() => handleHostAction(host.shopId, 'approve')} className="flex items-center gap-1 px-4 py-2 border border-green-600 text-green-700 hover:bg-green-50 rounded-lg text-sm font-semibold transition-colors"><AlertOctagon size={16}/> Lift Suspension</button>
                               )}
 
-                              {/* GLOBAL ACTIONS FOR ALL STATUSES */}
-                              <div className="flex-1" /> {/* Spacer */}
+                              <div className="flex-1" /> 
                               
-                              <a href={`mailto:${host.managerEmail}`} className="flex items-center gap-1 px-3 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-slate-700 rounded-lg text-sm font-semibold transition-colors"><Mail size={16}/> Custom Email</a>
+                              {/* TRIGGER THE CUSTOM COMPOSER OVERLAY */}
+                              <button onClick={() => setComposeHost(host)} className="flex items-center gap-1 px-3 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-slate-700 rounded-lg text-sm font-semibold transition-colors"><Mail size={16}/> Message Hub</button>
                               
                               {host.status !== 'deleted' && (
                                 <button onClick={() => handleHostAction(host.shopId, 'delete')} className="flex items-center gap-1 px-3 py-2 bg-white border border-red-200 hover:bg-red-50 text-red-600 rounded-lg text-sm font-semibold transition-colors" title="Soft Delete"><Trash2 size={16}/> Wipe Record</button>
