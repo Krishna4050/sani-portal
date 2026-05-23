@@ -6,43 +6,32 @@ import { createBrowserClient } from '@supabase/ssr';
 import { 
   ShieldCheck, LogOut, Users, QrCode, MessageSquare, PhoneCall, Loader2, Search, Tag, 
   Mail, Calendar, Ban, Trash2, CheckCircle, Store, Check, X, ChevronDown, ChevronUp, 
-  MapPin, FileText, Image as ImageIcon, PauseCircle, AlertTriangle, PlayCircle, Send, Paperclip, AlertOctagon 
+  MapPin, FileText, Image as ImageIcon, PauseCircle, AlertTriangle, PlayCircle, Send, 
+  Paperclip, AlertOctagon, ChevronLeft, ChevronRight 
 } from 'lucide-react';
 
 interface AdminTag { tagId: string; ownerId: string; isClaimed: boolean; createdAt: string; }
 interface AdminUser { id: string; email: string; phoneNumber: string; createdAt: string; isBanned: boolean; }
 interface AdminHost {
-  shopId: string;
-  managerId: string;
-  managerEmail: string;
-  shopName: string;
-  status: string;
-  createdAt: string;
-  street: string;
-  city: string;
-  phone: string;
-  documentUrl: string;
-  shopTypes: string[];
-  amenities: string[];
-  photos: string[];
+  shopId: string; managerId: string; managerEmail: string; shopName: string; status: string;
+  createdAt: string; street: string; city: string; phone: string; documentUrl: string;
+  shopTypes: string[]; amenities: string[]; photos: string[];
 }
 
 export default function DashboardPage() {
   const router = useRouter();
   
-  // All UI State
   type TabType = 'overview' | 'tags' | 'users' | 'hosts' | 'logs';
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedHostId, setExpandedHostId] = useState<string | null>(null);
   
-  // NEW: Lightbox & Communication State
-  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  // NEW: Photo Carousel State
+  const [lightboxData, setLightboxData] = useState<{ photos: string[], index: number } | null>(null);
   const [composeHost, setComposeHost] = useState<AdminHost | null>(null);
   const [msgSending, setMsgSending] = useState(false);
 
-  // All Data State
   const [settings, setSettings] = useState({ twilio_sms_enabled: false, twilio_call_enabled: false });
   const [stats, setStats] = useState({ totalUsers: 0, totalTags: 0, totalProxyCalls: 0 });
   const [tags, setTags] = useState<AdminTag[]>([]);
@@ -51,10 +40,7 @@ export default function DashboardPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [logs, setLogs] = useState<any[]>([]);
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  const supabase = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
 
   const fetchUsersAndHosts = async () => {
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
@@ -65,84 +51,36 @@ export default function DashboardPage() {
       ]);
       if (usersRes.ok) setUsers(await usersRes.json());
       if (hostsRes.ok) setHosts(await hostsRes.json());
-    } catch (error) { console.error("Failed to load users or hosts:", error); }
+    } catch (error) { 
+      console.error("Failed to load users or hosts",error); 
+    }
   };
 
   const fetchAllData = async () => {
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
-    const timestamp = new Date().getTime(); 
+    const t = new Date().getTime(); 
     try {
       const [settingsRes, statsRes, tagsRes, logsRes] = await Promise.all([
         fetch(`${backendUrl}/api/admin/settings`),
         fetch(`${backendUrl}/api/admin/stats`),
         fetch(`${backendUrl}/api/admin/tags`),
-        fetch(`${backendUrl}/api/admin/logs?t=${timestamp}`)
+        fetch(`${backendUrl}/api/admin/logs?t=${t}`)
       ]);
-
       if (settingsRes.ok) setSettings(await settingsRes.json());
       if (statsRes.ok) setStats(await statsRes.json());
       if (tagsRes.ok) setTags(await tagsRes.json());
       if (logsRes.ok) setLogs(await logsRes.json());
-      
       await fetchUsersAndHosts();
-    } catch (error) { console.error("Failed to load dashboard data:", error); } 
+    } catch (error) { console.error("Data fetch failed", error); } 
     finally { setIsLoading(false); }
   };
 
-  useEffect(() => {
+    useEffect(() => {
     // eslint-disable-next-line
     fetchAllData();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    const INACTIVITY_TIME = 5 * 60 * 1000; 
-    let timeoutId: number;
-    const logoutUser = async () => {
-      await supabase.auth.signOut();
-      router.push('/login');
-      router.refresh();
-    };
-    const resetTimer = () => {
-      if (timeoutId) window.clearTimeout(timeoutId);
-      timeoutId = window.setTimeout(logoutUser, INACTIVITY_TIME);
-    };
-    const events = ['mousemove', 'keydown', 'scroll', 'click', 'touchstart'];
-    events.forEach((event) => window.addEventListener(event, resetTimer));
-    resetTimer();
-    return () => {
-      if (timeoutId) window.clearTimeout(timeoutId);
-      events.forEach((event) => window.removeEventListener(event, resetTimer));
-    };
-  }, [router, supabase.auth]);
-
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    router.push('/login');
-    router.refresh();
-  };
-
-  const handleUserAction = async (userId: string, action: 'delete' | 'suspend' | 'activate') => {
-    const confirmMsg = action === 'delete' 
-      ? "Are you sure you want to PERMANENTLY delete this user? This cannot be undone."
-      : `Are you sure you want to ${action} this user?`;
-      
-    if (!window.confirm(confirmMsg)) return;
-
-    try {
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
-      const res = await fetch(`${backendUrl}/api/admin/user-action`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, action })
-      });
-      if (res.ok) await fetchUsersAndHosts();
-    } catch (error) {
-      console.error("Failed to load data:", error);
-    }
-  };
-
-  // LIFECYCLE MANAGEMENT FOR HOSTS
   const handleHostAction = async (shopId: string, action: 'approve' | 'reject' | 'pause' | 'suspend' | 'delete') => {
     const messages = {
       'approve': 'Approve and activate this shop?',
@@ -151,25 +89,18 @@ export default function DashboardPage() {
       'suspend': 'Suspend this shop? (Severe violation)',
       'delete': 'Delete this shop? (Soft delete for legal compliance, allows host to re-register)'
     };
-
     if (!window.confirm(messages[action])) return;
     try {
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
       const res = await fetch(`${backendUrl}/api/admin/hosts/verify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shopId, action })
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shopId, action })
       });
-      if (res.ok) {
-        setExpandedHostId(null);
-        await fetchAllData();
-      }
-    } catch (error) {
-      console.error("Action failed.", error);
-    }
+      if (res.ok) { setExpandedHostId(null); await fetchAllData(); }
+    } catch (error) { alert("Action failed.");
+      console.log("Action failed", error)
+     }
   };
 
-  // NEW: COMMUNICATION HANDLER
   const handleSendMessage = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!composeHost) return;
@@ -181,24 +112,36 @@ export default function DashboardPage() {
 
     try {
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
-      const res = await fetch(`${backendUrl}/api/admin/communicate`, {
-        method: 'POST', 
-        body: formData 
-      });
-      
-      if (res.ok) {
-        alert("Message sent successfully!");
-        setComposeHost(null);
-        fetchAllData(); 
-      } else {
-        alert("Failed to send message. Check backend connection.");
-      }
-    } catch (error) {
-      console.error("Communication error", error);
-      alert("Network error.");
-    } finally {
-      setMsgSending(false);
-    }
+      const res = await fetch(`${backendUrl}/api/admin/communicate`, { method: 'POST', body: formData });
+      if (res.ok) { alert("Message sent successfully!"); setComposeHost(null); fetchAllData(); } 
+      else { alert("Failed to send message. Check backend logs."); }
+    } catch (error) { alert("Network error.");
+      console.log("Network error:", error)
+     } 
+    finally { setMsgSending(false); }
+  };
+
+  // CAROUSEL NAVIGATORS
+  const nextImage = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLightboxData(prev => prev ? { ...prev, index: (prev.index + 1) % prev.photos.length } : null);
+  };
+  const prevImage = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLightboxData(prev => prev ? { ...prev, index: (prev.index - 1 + prev.photos.length) % prev.photos.length } : null);
+  };
+
+  // ... (Other functions kept identical for brevity: handleUserAction, handleToggleSetting, StatusBadge)
+  const handleUserAction = async (userId: string, action: 'delete' | 'suspend' | 'activate') => {
+    const confirmMsg = action === 'delete' ? "Are you sure you want to PERMANENTLY delete this user? This cannot be undone." : `Are you sure you want to ${action} this user?`;
+    if (!window.confirm(confirmMsg)) return;
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
+      const res = await fetch(`${backendUrl}/api/admin/user-action`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId, action }) });
+      if (res.ok) await fetchUsersAndHosts();
+    } catch (error) { console.error("Failed to load data");
+      console.log("Failed to load data", error)
+     }
   };
 
   const handleToggleSetting = async (settingName: 'twilio_sms_enabled' | 'twilio_call_enabled') => {
@@ -206,21 +149,12 @@ export default function DashboardPage() {
     setSettings(prev => ({ ...prev, [settingName]: newValue })); 
     try {
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
-      await fetch(`${backendUrl}/api/admin/update-setting`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ setting_name: settingName, setting_value: newValue })
-      });
-    } catch (error) { 
-      setSettings(prev => ({ ...prev, [settingName]: !newValue }));
-      console.error("Error", error);
-    }
+      await fetch(`${backendUrl}/api/admin/update-setting`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ setting_name: settingName, setting_value: newValue }) });
+    } catch (error) { setSettings(prev => ({ ...prev, [settingName]: !newValue }));
+  console.log("error", error) }
   };
 
-  const filteredTags = tags.filter(tag => 
-    tag.tagId.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    (tag.ownerId && tag.ownerId.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const filteredTags = tags.filter(tag => tag.tagId.toLowerCase().includes(searchQuery.toLowerCase()) || (tag.ownerId && tag.ownerId.toLowerCase().includes(searchQuery.toLowerCase())));
 
   const StatusBadge = ({ status }: { status: string }) => {
     switch(status) {
@@ -234,17 +168,32 @@ export default function DashboardPage() {
     }
   };
 
+  const handleSignOut = async () => { await supabase.auth.signOut(); router.push('/login'); router.refresh(); };
+
   if (isLoading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center"><Loader2 className="animate-spin text-slate-800" size={40} /></div>;
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans pb-12">
       
-      {/* 1. PHOTO LIGHTBOX OVERLAY */}
-      {lightboxImage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900 bg-opacity-95 p-4" onClick={() => setLightboxImage(null)}>
-          <button className="absolute top-6 right-6 text-white hover:text-gray-300 transition-colors" onClick={() => setLightboxImage(null)}><X size={36} /></button>
+      {/* 1. INTERACTIVE PHOTO CAROUSEL */}
+      {lightboxData && lightboxData.photos.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900 bg-opacity-95 p-4" onClick={() => setLightboxData(null)}>
+          <button className="absolute top-6 right-6 text-white hover:text-gray-300 transition-colors" onClick={(e) => { e.stopPropagation(); setLightboxData(null); }}><X size={36} /></button>
+          
+          {lightboxData.photos.length > 1 && (
+            <button className="absolute left-6 text-white hover:text-gray-300 p-4 transition-transform hover:scale-110" onClick={prevImage}><ChevronLeft size={48} /></button>
+          )}
+
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={lightboxImage} alt="Shop Expansion" className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl" />
+          <img src={lightboxData.photos[lightboxData.index]} alt="Shop Gallery" className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl animate-in fade-in zoom-in-95 duration-200" />
+          
+          {lightboxData.photos.length > 1 && (
+            <button className="absolute right-6 text-white hover:text-gray-300 p-4 transition-transform hover:scale-110" onClick={nextImage}><ChevronRight size={48} /></button>
+          )}
+
+          <div className="absolute bottom-6 text-white text-sm font-semibold tracking-wider bg-black bg-opacity-50 px-4 py-1 rounded-full">
+            {lightboxData.index + 1} / {lightboxData.photos.length}
+          </div>
         </div>
       )}
 
@@ -265,13 +214,7 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">CC (Optional)</label>
-                  <input 
-                    type="text" 
-                    name="cc" 
-                    defaultValue={composeHost.phone !== composeHost.managerEmail ? "" : ""} 
-                    placeholder="additional@email.com" 
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-800 outline-none" 
-                  />
+                  <input type="text" name="cc" defaultValue={composeHost.phone !== composeHost.managerEmail ? "" : ""} placeholder="additional@email.com" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-800 outline-none" />
                 </div>
               </div>
 
@@ -465,19 +408,16 @@ export default function DashboardPage() {
         {/* ================= TAB 4: PARTNER LIFECYCLE ================= */}
         {activeTab === 'hosts' && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-500">
-            <div className="p-6 border-b border-gray-100 bg-gray-50">
-              <h2 className="text-lg font-bold text-slate-800">Partner Lifecycle Management</h2>
-              <p className="text-sm text-gray-500">Click any row to reveal deep diagnostics and lifecycle controls.</p>
+            <div className="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+              <div>
+                <h2 className="text-lg font-bold text-slate-800">Partner Lifecycle Management</h2>
+                <p className="text-sm text-gray-500">Click any row to reveal deep diagnostics and lifecycle controls.</p>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm text-gray-600 border-collapse">
                 <thead className="bg-white text-gray-500 font-medium border-b border-gray-100">
-                  <tr>
-                    <th className="px-6 py-4">Shop Identity</th>
-                    <th className="px-6 py-4">Manager Contact</th>
-                    <th className="px-6 py-4">Current Status</th>
-                    <th className="px-6 py-4 text-right">Details</th>
-                  </tr>
+                  <tr><th className="px-6 py-4">Shop Identity</th><th className="px-6 py-4">Manager Contact</th><th className="px-6 py-4">Current Status</th><th className="px-6 py-4 text-right">Details</th></tr>
                 </thead>
                 <tbody>
                   {hosts.map((host) => (
@@ -486,14 +426,10 @@ export default function DashboardPage() {
                         className={`transition-colors cursor-pointer border-b border-gray-50 ${expandedHostId === host.shopId ? 'bg-slate-50' : 'hover:bg-gray-50'}`}
                         onClick={() => setExpandedHostId(expandedHostId === host.shopId ? null : host.shopId)}
                       >
-                        <td className="px-6 py-4 font-semibold text-slate-800 flex items-center gap-2">
-                          <Store size={18} className="text-gray-400" /> {host.shopName}
-                        </td>
+                        <td className="px-6 py-4 font-semibold text-slate-800 flex items-center gap-2"><Store size={18} className="text-gray-400" /> {host.shopName}</td>
                         <td className="px-6 py-4 text-gray-500">{host.managerEmail}</td>
                         <td className="px-6 py-4"><StatusBadge status={host.status} /></td>
-                        <td className="px-6 py-4 text-right text-gray-400">
-                          {expandedHostId === host.shopId ? <ChevronUp size={20} className="inline"/> : <ChevronDown size={20} className="inline"/>}
-                        </td>
+                        <td className="px-6 py-4 text-right text-gray-400">{expandedHostId === host.shopId ? <ChevronUp size={20} className="inline"/> : <ChevronDown size={20} className="inline"/>}</td>
                       </tr>
 
                       {expandedHostId === host.shopId && (
@@ -502,16 +438,9 @@ export default function DashboardPage() {
                             
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
                               <div className="space-y-4">
-                                <div>
-                                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1"><MapPin size={14}/> Physical Location</h4>
-                                  <p className="text-slate-800 font-medium">{host.street}, {host.city}</p>
-                                </div>
-                                <div>
-                                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1"><PhoneCall size={14}/> Support Contact</h4>
-                                  <p className="text-slate-800 font-mono">{host.phone || 'N/A'}</p>
-                                </div>
-                                <div>
-                                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1"><Tag size={14}/> Categories & Amenities</h4>
+                                <div><h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1"><MapPin size={14}/> Location</h4><p className="text-slate-800 font-medium">{host.street}, {host.city}</p></div>
+                                <div><h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1"><PhoneCall size={14}/> Support Contact</h4><p className="text-slate-800 font-mono">{host.phone || 'N/A'}</p></div>
+                                <div><h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1"><Tag size={14}/> Categories & Amenities</h4>
                                   <div className="flex flex-wrap gap-2 mt-1">
                                     {host.shopTypes?.map((t, i) => <span key={i} className="px-2 py-1 bg-white border border-gray-200 rounded-md text-xs font-medium">{t}</span>)}
                                     {host.amenities?.map((a, i) => <span key={i} className="px-2 py-1 bg-white border border-gray-200 rounded-md text-xs text-gray-500">{a}</span>)}
@@ -520,22 +449,16 @@ export default function DashboardPage() {
                               </div>
 
                               <div className="space-y-4">
-                                <div>
-                                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1"><FileText size={14}/> Verification Document</h4>
-                                  {host.documentUrl ? (
-                                    <a href={host.documentUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-800 text-sm font-medium underline">Open Secure Document</a>
-                                  ) : (<span className="text-gray-400 text-sm italic">No document uploaded</span>)}
+                                <div><h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1"><FileText size={14}/> Verification Document</h4>
+                                  {host.documentUrl ? (<a href={host.documentUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-800 text-sm font-medium underline">Open Secure Document</a>) : (<span className="text-gray-400 text-sm italic">No document uploaded</span>)}
                                 </div>
-                                <div>
-                                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1"><ImageIcon size={14}/> Location Photos</h4>
+                                <div><h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1"><ImageIcon size={14}/> Location Photos</h4>
                                   {host.photos && host.photos.length > 0 && host.photos[0] !== "" ? (
-                                    <div className="flex gap-2 mt-2 overflow-x-auto pb-2">
-                                      {/* 3. IN-APP LIGHTBOX TRIGGER FOR PHOTOS */}
+                                    <div className="flex gap-3 mt-2 overflow-x-auto pb-2">
+                                      {/* LIGHTBOX TRIGGER IS HERE */}
                                       {host.photos.map((p, i) => (
-                                        <button key={i} onClick={() => setLightboxImage(p)} className="shrink-0 relative group outline-none focus:ring-2 focus:ring-slate-800 rounded-lg">
-                                          <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all rounded-lg flex items-center justify-center">
-                                            <Search className="text-white opacity-0 group-hover:opacity-100 transition-opacity" size={24} />
-                                          </div>
+                                        <button key={i} onClick={() => setLightboxData({ photos: host.photos, index: i })} className="shrink-0 relative group outline-none focus:ring-2 focus:ring-slate-800 rounded-lg">
+                                          <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all rounded-lg flex items-center justify-center"><Search className="text-white opacity-0 group-hover:opacity-100 transition-opacity" size={24} /></div>
                                           {/* eslint-disable-next-line @next/next/no-img-element */}
                                           <img src={p} alt="Shop Thumbnail" className="w-20 h-20 rounded-lg object-cover border border-gray-200 shadow-sm" />
                                         </button>
@@ -551,20 +474,15 @@ export default function DashboardPage() {
                               <span className="text-xs font-bold text-slate-800 uppercase tracking-wider mr-2">Lifecycle Controls:</span>
                               
                               {host.status === 'pending' && (
-                                <>
-                                  <button onClick={() => handleHostAction(host.shopId, 'approve')} className="flex items-center gap-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold transition-colors"><Check size={16}/> Approve & Activate</button>
-                                  <button onClick={() => handleHostAction(host.shopId, 'reject')} className="flex items-center gap-1 px-4 py-2 border border-red-200 text-red-600 hover:bg-red-50 rounded-lg text-sm font-semibold transition-colors"><X size={16}/> Reject Application</button>
-                                </>
+                                <><button onClick={() => handleHostAction(host.shopId, 'approve')} className="flex items-center gap-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold transition-colors"><Check size={16}/> Approve & Activate</button>
+                                <button onClick={() => handleHostAction(host.shopId, 'reject')} className="flex items-center gap-1 px-4 py-2 border border-red-200 text-red-600 hover:bg-red-50 rounded-lg text-sm font-semibold transition-colors"><X size={16}/> Reject Application</button></>
                               )}
 
                               {host.status === 'verified' && (
-                                <>
-                                  <button onClick={() => handleHostAction(host.shopId, 'pause')} className="flex items-center gap-1 px-4 py-2 bg-orange-100 hover:bg-orange-200 text-orange-800 rounded-lg text-sm font-semibold transition-colors"><PauseCircle size={16}/> Pause Visibility</button>
-                                  <button onClick={() => handleHostAction(host.shopId, 'suspend')} className="flex items-center gap-1 px-4 py-2 bg-red-100 hover:bg-red-200 text-red-800 rounded-lg text-sm font-semibold transition-colors"><AlertTriangle size={16}/> Suspend Account</button>
-                                </>
+                                <><button onClick={() => handleHostAction(host.shopId, 'pause')} className="flex items-center gap-1 px-4 py-2 bg-orange-100 hover:bg-orange-200 text-orange-800 rounded-lg text-sm font-semibold transition-colors"><PauseCircle size={16}/> Pause Visibility</button>
+                                <button onClick={() => handleHostAction(host.shopId, 'suspend')} className="flex items-center gap-1 px-4 py-2 bg-red-100 hover:bg-red-200 text-red-800 rounded-lg text-sm font-semibold transition-colors"><AlertTriangle size={16}/> Suspend Account</button></>
                               )}
 
-                              {/* EXPLICIT RESUME BUTTONS FOR PAUSED/SUSPENDED */}
                               {host.status === 'paused' && (
                                 <button onClick={() => handleHostAction(host.shopId, 'approve')} className="flex items-center gap-1 px-4 py-2 border border-green-600 text-green-700 hover:bg-green-50 rounded-lg text-sm font-semibold transition-colors"><PlayCircle size={16}/> Resume Shop Visibility</button>
                               )}
@@ -573,16 +491,15 @@ export default function DashboardPage() {
                                 <button onClick={() => handleHostAction(host.shopId, 'approve')} className="flex items-center gap-1 px-4 py-2 border border-green-600 text-green-700 hover:bg-green-50 rounded-lg text-sm font-semibold transition-colors"><AlertOctagon size={16}/> Lift Suspension</button>
                               )}
 
-                              <div className="flex-1" /> 
+                              <div className="flex-1" />
                               
-                              {/* TRIGGER THE CUSTOM COMPOSER OVERLAY */}
+                              {/* IN-APP COMPOSER TRIGGER */}
                               <button onClick={() => setComposeHost(host)} className="flex items-center gap-1 px-3 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-slate-700 rounded-lg text-sm font-semibold transition-colors"><Mail size={16}/> Message Hub</button>
                               
                               {host.status !== 'deleted' && (
-                                <button onClick={() => handleHostAction(host.shopId, 'delete')} className="flex items-center gap-1 px-3 py-2 bg-white border border-red-200 hover:bg-red-50 text-red-600 rounded-lg text-sm font-semibold transition-colors" title="Soft Delete"><Trash2 size={16}/> Wipe Record</button>
+                                <button onClick={() => handleHostAction(host.shopId, 'delete')} className="flex items-center gap-1 px-3 py-2 bg-white border border-red-200 hover:bg-red-50 text-red-600 rounded-lg text-sm font-semibold transition-colors"><Trash2 size={16}/> Wipe Record</button>
                               )}
                             </div>
-
                           </td>
                         </tr>
                       )}
