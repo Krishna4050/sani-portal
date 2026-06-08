@@ -33,6 +33,7 @@ export default function DashboardPage() {
   const [msgSending, setMsgSending] = useState(false);
 
   const [settings, setSettings] = useState({ twilio_sms_enabled: false, twilio_call_enabled: false });
+  const [flightSettings, setFlightSettings] = useState({ markup_enabled: false, markup_percentage: 0, markup_fixed: 0 });
   const [stats, setStats] = useState({ totalUsers: 0, totalTags: 0, totalProxyCalls: 0 });
   const [tags, setTags] = useState<AdminTag[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -60,13 +61,15 @@ export default function DashboardPage() {
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
     const t = new Date().getTime(); 
     try {
-      const [settingsRes, statsRes, tagsRes, logsRes] = await Promise.all([
+      const [settingsRes, flightSettingsRes, statsRes, tagsRes, logsRes] = await Promise.all([
         fetch(`${backendUrl}/api/admin/settings`),
+        fetch(`${backendUrl}/api/admin/flight-settings`),
         fetch(`${backendUrl}/api/admin/stats`),
         fetch(`${backendUrl}/api/admin/tags`),
         fetch(`${backendUrl}/api/admin/logs?t=${t}`)
       ]);
       if (settingsRes.ok) setSettings(await settingsRes.json());
+      if (flightSettingsRes.ok) setFlightSettings(await flightSettingsRes.json());
       if (statsRes.ok) setStats(await statsRes.json());
       if (tagsRes.ok) setTags(await tagsRes.json());
       if (logsRes.ok) setLogs(await logsRes.json());
@@ -152,6 +155,22 @@ export default function DashboardPage() {
       await fetch(`${backendUrl}/api/admin/update-setting`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ setting_name: settingName, setting_value: newValue }) });
     } catch (error) { setSettings(prev => ({ ...prev, [settingName]: !newValue }));
   console.log("error", error) }
+  };
+
+  const handleSaveFlightSettings = async () => {
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
+      const res = await fetch(`${backendUrl}/api/admin/flight-settings`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify(flightSettings) 
+      });
+      if (res.ok) alert("Flight markup settings saved successfully!");
+      else alert("Failed to save flight settings.");
+    } catch (error) {
+      console.error("Flight settings save failed", error);
+      alert("Network error saving flight settings.");
+    }
   };
 
   const filteredTags = tags.filter(tag => tag.tagId.toLowerCase().includes(searchQuery.toLowerCase()) || (tag.ownerId && tag.ownerId.toLowerCase().includes(searchQuery.toLowerCase())));
@@ -331,6 +350,46 @@ export default function DashboardPage() {
                  <button onClick={() => handleToggleSetting('twilio_call_enabled')} className={`w-14 h-8 flex items-center rounded-full p-1 cursor-pointer transition-colors ${settings.twilio_call_enabled ? 'bg-green-500' : 'bg-gray-300'}`}>
                   <div className={`bg-white w-6 h-6 rounded-full shadow-md transform transition-transform ${settings.twilio_call_enabled ? 'translate-x-6' : 'translate-x-0'}`} />
                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Flight Settings Card */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mt-8">
+              <div className="bg-slate-800 px-6 py-4 border-b border-slate-700 flex items-center gap-2">
+                <ShieldCheck className="text-blue-400" size={20} />
+                <h3 className="text-white font-semibold">Duffel Flight Markup Control</h3>
+              </div>
+              <div className="p-6 space-y-6">
+                
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
+                  <div className="flex items-start gap-4">
+                    <div className="bg-gray-200 p-2 rounded-lg mt-1"><CheckCircle className="text-gray-600" size={20} /></div>
+                    <div>
+                      <h4 className="font-bold text-slate-800">Enable Flight Markups</h4>
+                      <p className="text-sm text-gray-600 mt-1 max-w-lg">If enabled, markup will be automatically integrated into flight search prices and checkout securely on the backend.</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setFlightSettings(p => ({...p, markup_enabled: !p.markup_enabled}))} className={`w-14 h-8 flex items-center rounded-full p-1 cursor-pointer transition-colors ${flightSettings.markup_enabled ? 'bg-green-500' : 'bg-gray-300'}`}>
+                    <div className={`bg-white w-6 h-6 rounded-full shadow-md transform transition-transform ${flightSettings.markup_enabled ? 'translate-x-6' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">Percentage Markup (%)</label>
+                    <input type="number" step="0.01" min="0" value={flightSettings.markup_percentage} onChange={(e) => setFlightSettings(p => ({...p, markup_percentage: parseFloat(e.target.value) || 0}))} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-800 outline-none transition-shadow" placeholder="e.g. 10" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">Fixed Amount Markup (€)</label>
+                    <input type="number" step="0.01" min="0" value={flightSettings.markup_fixed} onChange={(e) => setFlightSettings(p => ({...p, markup_fixed: parseFloat(e.target.value) || 0}))} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-800 outline-none transition-shadow" placeholder="e.g. 50" />
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <button onClick={handleSaveFlightSettings} className="px-6 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg font-semibold text-sm transition-colors shadow-sm">
+                    Save Markup Settings
+                  </button>
                 </div>
               </div>
             </div>
