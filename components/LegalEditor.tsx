@@ -1,10 +1,10 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
-import 'react-quill/dist/quill.snow.css';
+import 'react-quill-new/dist/quill.snow.css';
 import { Loader2, Save } from 'lucide-react';
 
-const ReactQuill = dynamic(() => import('react-quill'), { ssr: false, loading: () => <div className="h-64 flex items-center justify-center"><Loader2 className="animate-spin text-slate-400" /></div> });
+const ReactQuill = dynamic(() => import('react-quill-new'), { ssr: false, loading: () => <div className="h-64 flex items-center justify-center"><Loader2 className="animate-spin text-slate-400" /></div> });
 
 export default function LegalEditor() {
   const [docType, setDocType] = useState('terms');
