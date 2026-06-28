@@ -85,7 +85,16 @@ export default function LegalEditor() {
         </div>
       </div>
       
-      <div className="border border-gray-200 rounded-xl overflow-hidden pb-12">
+      <div className="border border-gray-200 rounded-xl overflow-hidden pb-12 relative">
+        <style>{`
+          .ql-editor {
+            color: #1e293b !important;
+            font-size: 16px !important;
+          }
+          .ql-editor p {
+            color: #1e293b !important;
+          }
+        `}</style>
         <ReactQuill 
           theme="snow" 
           value={content} 
