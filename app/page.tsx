@@ -9,6 +9,7 @@ import {
   MapPin, FileText, Image as ImageIcon, PauseCircle, AlertTriangle, PlayCircle, Send, 
   Paperclip, AlertOctagon, ChevronLeft, ChevronRight 
 } from 'lucide-react';
+import LegalEditor from '../components/LegalEditor';
 
 interface AdminTag { tagId: string; ownerId: string; isClaimed: boolean; createdAt: string; }
 interface AdminUser { id: string; email: string; phoneNumber: string; createdAt: string; isBanned: boolean; }
@@ -21,7 +22,7 @@ interface AdminHost {
 export default function DashboardPage() {
   const router = useRouter();
   
-  type TabType = 'overview' | 'tags' | 'users' | 'hosts' | 'logs';
+  type TabType = 'overview' | 'tags' | 'users' | 'hosts' | 'logs' | 'legal';
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -295,7 +296,7 @@ export default function DashboardPage() {
 
       <div className="max-w-6xl mx-auto mt-8 px-6">
         <div className="flex space-x-4 mb-8 border-b border-gray-200 overflow-x-auto">
-          {(['overview', 'tags', 'users', 'hosts', 'logs'] as TabType[]).map((tab) => (
+          {(['overview', 'tags', 'users', 'hosts', 'logs', 'legal'] as TabType[]).map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)} className={`pb-4 px-2 font-medium text-sm capitalize whitespace-nowrap transition-colors ${activeTab === tab ? 'border-b-2 border-slate-800 text-slate-800' : 'text-gray-500 hover:text-gray-700'}`}>
               {tab === 'hosts' ? 'Partner Lifecycle' : tab}
             </button>
@@ -599,6 +600,13 @@ export default function DashboardPage() {
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+
+        {/* ================= TAB 6: LEGAL ================= */}
+        {activeTab === 'legal' && (
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+            <LegalEditor />
           </div>
         )}
 
