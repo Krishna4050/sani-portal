@@ -16,7 +16,7 @@ export default function LegalEditor() {
     fetchDocument(docType);
   }, [docType]);
 
-  const fetchDocument = async (type: string) => {
+  async function fetchDocument(type: string) {
     setIsLoading(true);
     try {
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
@@ -33,7 +33,7 @@ export default function LegalEditor() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }
 
   const handleSave = async () => {
     setIsSaving(true);
